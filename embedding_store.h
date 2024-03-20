@@ -76,10 +76,13 @@ class EmbeddingStore {
         close(embedding_store_fd);
         close(embedding_to_object_map_fd);
         close(object_store_fd);
+        
+        // TODO: for now let the OS handle this -- if we do manually, it fails!
+        // std::cout << "Unmapped" << std::endl;
+        // munmap(embedding_store_mmap_addr, max_embedding_store_size);
+        // munmap(embedding_to_object_map_mmap_addr, max_embedding_to_object_map_size);
+        // munmap(object_store_mmap_addr, max_object_store_size);
 
-        munmap(embedding_store_mmap_addr, max_embedding_store_size);
-        munmap(embedding_to_object_map_mmap_addr, max_embedding_to_object_map_size);
-        munmap(object_store_mmap_addr, max_object_store_size);
     }
 
     bool check_bounds(uint32_t value_size = 0){
@@ -102,9 +105,9 @@ class EmbeddingStore {
         uint32_t max_embedding_store_size = DEFAULT_MAX_EMBEDDING_STORE_SIZE,
         uint32_t max_object_store_size = DEFAULT_MAX_OBJECT_STORE_SIZE
     ) : 
+        embedding_size(embedding_size),
         max_object_store_size(max_object_store_size),
         max_embedding_store_size(max_embedding_store_size),
-        embedding_size(embedding_size),
         max_embedding_to_object_map_size(max_embedding_store_size / embedding_size * sizeof(uint32_t))
     {
         fs::path dir_path = dir;
@@ -124,12 +127,13 @@ class EmbeddingStore {
         }
         bool exists = num_paths_exist != 0;
 
-        mmap_path(embedding_store_path, embedding_store_fd, embedding_store_mmap_addr, 
-            exists ? fs::file_size(embedding_store_path) : max_embedding_store_size);
-        mmap_path(embedding_to_object_map_path, embedding_to_object_map_fd, embedding_to_object_map_mmap_addr, 
-            exists ? fs::file_size(embedding_to_object_map_path) : max_embedding_to_object_map_size);
-        mmap_path(object_store_path, object_store_fd, object_store_mmap_addr, 
-            exists ? fs::file_size(object_store_path) : max_object_store_size);
+        max_embedding_store_size = exists ? fs::file_size(embedding_store_path) : max_embedding_store_size;
+        max_embedding_to_object_map_size = exists ? fs::file_size(embedding_to_object_map_path) : max_embedding_to_object_map_size;
+        max_object_store_size = exists ? fs::file_size(object_store_path) : max_object_store_size;
+
+        mmap_path(embedding_store_path, embedding_store_fd, embedding_store_mmap_addr, max_embedding_store_size);
+        mmap_path(embedding_to_object_map_path, embedding_to_object_map_fd, embedding_to_object_map_mmap_addr, max_embedding_to_object_map_size);
+        mmap_path(object_store_path, object_store_fd, object_store_mmap_addr, max_object_store_size); 
 
         if(!exists){
             memset_mmap_files();
@@ -179,8 +183,8 @@ class EmbeddingStore {
         // each thread goes through its rows and adds to pq
 
         std::vector<std::thread> threads;
+        uint32_t start = 0;
         for(size_t i = 0 ; i < num_threads; i++){
-            uint32_t start = i * num_rows_per_thread;
             uint32_t end = start + num_rows_per_thread;
             if(i == num_threads - 1){
                 end += leftover;
@@ -205,12 +209,13 @@ class EmbeddingStore {
                 }
             });
             threads.push_back(std::move(t));
+
+            start = end + 1;
         }
 
         for(auto& t : threads){
             t.join();
         }
-
 
         std::vector<std::string> result;
         while(!pq.empty()){
@@ -232,7 +237,6 @@ class EmbeddingStore {
 
         std::reverse(result.begin(), result.end());
         return result;
-
     }
 };
 

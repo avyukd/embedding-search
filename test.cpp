@@ -15,7 +15,9 @@ class TestWrapper {
     private:
         fs::path dir_path;
     public:
-        TestWrapper(const std::string& dir) : dir_path(dir) {}
+        TestWrapper(const std::string& dir) : dir_path(dir) {
+            std::cout << "---" << std::endl;
+        }
         ~TestWrapper(){
             auto n = fs::remove_all(dir_path);
             std::cout << "Removed " << n << " files at " << dir_path.string() << std::endl;
@@ -84,20 +86,47 @@ int main(int argc, char** argv){
 
             float k1[2] = {0.2, 0.3};
             std::vector<std::string> closest = store.get_k_closest(k1, 3, 1, DistanceMetric::cosine_similarity);
-            PRINT_VEC(closest);
+            // PRINT_VEC(closest);
             ASSERT(closest.size() == 3);
             ASSERT(closest[0] == "horse");
             ASSERT(closest[1] == "basketball");
             ASSERT(closest[2] == "football");
 
-            std::cout << "Add more embeddings..." << std::endl;
             float k4[2] = {0.7, 0.7}; std::string v4 = "nascar";
             store.add_embedding(k4, v4);
 
             std::vector<std::string> closest_second = store.get_k_closest(k2, 1, 1, DistanceMetric::cosine_similarity);
+            // PRINT_VEC(closest_second);
             ASSERT(closest_second.size() == 1);
             ASSERT(closest_second[0] == "basketball");
         }
+        std::cout << "PASSED" << std::endl;
+    }
+
+    {
+        TestWrapper tw("test_files/multi_thread_test");
+        std::cout << "TEST -- MULTI THREAD..." << std::endl;
+
+        EmbeddingStore store(tw.get_dir_path().c_str(), 2, 1024, 1024);
+        std::vector<float> keys = {1, 2, 3, 4, 5};
+        for(float k1 : keys){
+            for(float k2 : keys){
+                std::string v = std::to_string((int) k1) + std::to_string((int) k2);
+                float k[2] = {k1, k2};
+                store.add_embedding(k, v);
+            }
+        }
+
+        float check_vec_1[2] = {1, 1};
+        std::vector<std::string> closest = store.get_k_closest(check_vec_1, 5, 2, DistanceMetric::cosine_similarity);
+        //PRINT_VEC(closest);
+        ASSERT(closest.size() == 5);
+        ASSERT(closest[0] == "11");
+        ASSERT(closest[1] == "22");
+        ASSERT(closest[2] == "33");
+        ASSERT(closest[3] == "44");
+        ASSERT(closest[4] == "55");
+
         std::cout << "PASSED" << std::endl;
     }
 
