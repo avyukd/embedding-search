@@ -4,6 +4,8 @@
 using OBJECT_STORE_IDX_TYPE = uint32_t;
 const uint32_t OBJECT_STORE_IDX_TYPE_SIZE = sizeof(OBJECT_STORE_IDX_TYPE);
 
+const uint32_t DEFAULT_WRITE_IDX = sizeof(uint32_t);
+
 const char* EMBEDDING_STORE_FN = "embedding_store.bin";
 const char* EMBEDDING_TO_OBJECT_MAP_FN = "embedding_to_object_map.bin";
 const char* OBJECT_STORE_FN = "object_store.bin";

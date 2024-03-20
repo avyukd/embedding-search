@@ -7,6 +7,7 @@
 
 #define IGNORE_TEST if(0)
 #define ASSERT(x) if(!(x)){tw.~TestWrapper();assert(x);}
+#define PRINT_VEC(x) for(auto i : x){std::cout << i << " ";}
 
 namespace fs = std::filesystem;
 
@@ -29,7 +30,6 @@ void add_embeddings(EmbeddingStore& store, std::vector<std::pair<float*, std::st
         store.add_embedding(k, v);
     }
 }
-
 
 int main(int argc, char** argv){
     {
@@ -68,6 +68,7 @@ int main(int argc, char** argv){
         std::cout << "TEST -- LOAD..." << std::endl;
         float k2[2] = {0.2, 0.4}; std::string v2 = "basketball";
         {
+            std::cout << "Add embeddings..." << std::endl;
             EmbeddingStore store(tw.get_dir_path().c_str(), 2, 1024, 1024);        
         
             float k1[2] = {0.2, 0.3}; std::string v1 = "horse";
@@ -78,21 +79,24 @@ int main(int argc, char** argv){
             });
         }
         {
-            EmbeddingStore store(tw.get_dir_path().c_str(), 2, 1024, 1024);        
+            std::cout << "Load embeddings..." << std::endl;
+            EmbeddingStore store(tw.get_dir_path().c_str(), 2);        
 
             float k1[2] = {0.2, 0.3};
             std::vector<std::string> closest = store.get_k_closest(k1, 3, 1, DistanceMetric::cosine_similarity);
+            PRINT_VEC(closest);
             ASSERT(closest.size() == 3);
             ASSERT(closest[0] == "horse");
             ASSERT(closest[1] == "basketball");
             ASSERT(closest[2] == "football");
 
+            std::cout << "Add more embeddings..." << std::endl;
             float k4[2] = {0.7, 0.7}; std::string v4 = "nascar";
             store.add_embedding(k4, v4);
 
-            closest = store.get_k_closest(k2, 1, 1, DistanceMetric::cosine_similarity);
-            ASSERT(closest.size() == 1);
-            ASSERT(closest[0] == "basketball");
+            std::vector<std::string> closest_second = store.get_k_closest(k2, 1, 1, DistanceMetric::cosine_similarity);
+            ASSERT(closest_second.size() == 1);
+            ASSERT(closest_second[0] == "basketball");
         }
         std::cout << "PASSED" << std::endl;
     }

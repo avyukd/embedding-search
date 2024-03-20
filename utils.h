@@ -2,6 +2,7 @@
 #include <string.h>
 #include <filesystem>
 #include <vector>
+#include <iostream>
 
 namespace fs = std::filesystem;
 

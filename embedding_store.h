@@ -30,15 +30,15 @@ class EmbeddingStore {
 
     int embedding_store_fd = -1;
     char* embedding_store_mmap_addr = nullptr;
-    uint32_t embedding_store_write_idx = 0; 
+    uint32_t embedding_store_write_idx = DEFAULT_WRITE_IDX; 
 
     int embedding_to_object_map_fd = -1;
     char* embedding_to_object_map_mmap_addr = nullptr;
-    uint32_t embedding_to_object_map_write_idx = 0;
+    uint32_t embedding_to_object_map_write_idx = DEFAULT_WRITE_IDX;
 
     int object_store_fd = -1;
     char* object_store_mmap_addr = nullptr;
-    uint32_t object_store_write_idx = 0;
+    uint32_t object_store_write_idx = DEFAULT_WRITE_IDX;
 
     void mmap_path(const fs::path& path, int& fd, char*& mmap_addr, uint32_t max_size){
         const char* path_str = path.c_str();
@@ -60,31 +60,16 @@ class EmbeddingStore {
         memset(object_store_mmap_addr, 0, max_object_store_size);
     }
 
-    bool set_write_indices(){
-        while(
-            embedding_store_mmap_addr[embedding_store_write_idx] != 0 && 
-            embedding_store_write_idx < max_embedding_store_size
-        ){
-            embedding_store_write_idx++;
-        }
+    void set_write_indices(){
+        embedding_store_write_idx = char_to_uint32_t(embedding_store_mmap_addr, DEFAULT_WRITE_IDX);
+        embedding_to_object_map_write_idx = char_to_uint32_t(embedding_to_object_map_mmap_addr, DEFAULT_WRITE_IDX);
+        object_store_write_idx = char_to_uint32_t(object_store_mmap_addr, DEFAULT_WRITE_IDX);
+    }
 
-        while(
-            embedding_to_object_map_mmap_addr[embedding_to_object_map_write_idx] != 0 && 
-            embedding_to_object_map_write_idx < max_embedding_to_object_map_size
-        ){
-            embedding_to_object_map_write_idx++;
-        }
-
-        while(
-            object_store_mmap_addr[object_store_write_idx] != 0 && 
-            object_store_write_idx < max_object_store_size
-        ){
-            object_store_write_idx++;
-        }
-
-        return embedding_store_write_idx < max_embedding_store_size && 
-            embedding_to_object_map_write_idx < max_embedding_to_object_map_size &&
-            object_store_write_idx < max_object_store_size;
+    void commit_write_indices(){
+        memcpy(embedding_store_mmap_addr, &embedding_store_write_idx, DEFAULT_WRITE_IDX);
+        memcpy(embedding_to_object_map_mmap_addr, &embedding_to_object_map_write_idx, DEFAULT_WRITE_IDX);
+        memcpy(object_store_mmap_addr, &object_store_write_idx, DEFAULT_WRITE_IDX);
     }
 
     void close_and_unmap_mmap_files(){
@@ -131,24 +116,30 @@ class EmbeddingStore {
         fs::path embedding_to_object_map_path = dir_path / EMBEDDING_TO_OBJECT_MAP_FN;
         fs::path object_store_path = dir_path / OBJECT_STORE_FN;
 
+        // TODO: if exists, need to use file size
+
         int num_paths_exist = get_num_paths_exist({embedding_store_path, embedding_to_object_map_path, object_store_path});
         if(num_paths_exist != 0 && num_paths_exist != 3){
             throw std::runtime_error("All or none of the files should exist, but this is not the case. Invalid state.");
         }
+        bool exists = num_paths_exist != 0;
 
-        mmap_path(embedding_store_path, embedding_store_fd, embedding_store_mmap_addr, max_embedding_store_size);
+        mmap_path(embedding_store_path, embedding_store_fd, embedding_store_mmap_addr, 
+            exists ? fs::file_size(embedding_store_path) : max_embedding_store_size);
         mmap_path(embedding_to_object_map_path, embedding_to_object_map_fd, embedding_to_object_map_mmap_addr, 
-            max_embedding_to_object_map_size);
-        mmap_path(object_store_path, object_store_fd, object_store_mmap_addr, max_object_store_size);
+            exists ? fs::file_size(embedding_to_object_map_path) : max_embedding_to_object_map_size);
+        mmap_path(object_store_path, object_store_fd, object_store_mmap_addr, 
+            exists ? fs::file_size(object_store_path) : max_object_store_size);
 
-        if(num_paths_exist == 0){
+        if(!exists){
             memset_mmap_files();
         }else{
-            if(!set_write_indices()) throw std::runtime_error("Unable to set write indices. Mmap files are likely full.");
+            set_write_indices();            
         }
     }
 
     ~EmbeddingStore(){
+        commit_write_indices();
         close_and_unmap_mmap_files();
     }
 
@@ -175,10 +166,10 @@ class EmbeddingStore {
         float* embedding, uint32_t k, 
         uint32_t num_threads = 1, DistanceMetric metric = DistanceMetric::cosine_similarity){
 
-        uint32_t num_rows = embedding_store_write_idx / (embedding_size * sizeof(float));
+        uint32_t num_rows = (embedding_store_write_idx - DEFAULT_WRITE_IDX) / (embedding_size * sizeof(float));
         uint32_t num_rows_per_thread = num_rows / num_threads;
         uint32_t leftover = num_rows % num_threads;
-        
+
         std::mutex pq_mutex;
         std::priority_queue<std::pair<float, uint32_t>, 
             std::vector<std::pair<float, uint32_t>>,
@@ -196,10 +187,10 @@ class EmbeddingStore {
             }
 
             std::thread t([this, embedding, &pq, start, end, metric, k, &pq_mutex](){
-                for(uint32_t i = start; i < end; i++){
+                for(uint32_t i = start; i <= end; i++){
                     float distance = compute_distance(
                         embedding,
-                        this->embedding_store_mmap_addr + i * this->embedding_size * sizeof(float), 
+                        this->embedding_store_mmap_addr + DEFAULT_WRITE_IDX + i * this->embedding_size * sizeof(float), 
                         this->embedding_size, 
                         metric
                     );
@@ -220,15 +211,16 @@ class EmbeddingStore {
             t.join();
         }
 
+
         std::vector<std::string> result;
         while(!pq.empty()){
             auto [_, idx] = pq.top(); pq.pop();
             uint32_t object_store_offset = char_to_uint32_t(
-                embedding_to_object_map_mmap_addr + idx * OBJECT_STORE_IDX_TYPE_SIZE,
+                embedding_to_object_map_mmap_addr + DEFAULT_WRITE_IDX + idx * OBJECT_STORE_IDX_TYPE_SIZE,
                 OBJECT_STORE_IDX_TYPE_SIZE
             );
             uint32_t value_size = char_to_uint32_t(
-                object_store_mmap_addr + object_store_offset,
+                object_store_mmap_addr + object_store_offset, // object store offset is an index which includes DEFAULT_WRITE_IDX
                 OBJECT_STORE_IDX_TYPE_SIZE
             );
             std::string value = std::string(
