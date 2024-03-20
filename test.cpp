@@ -1,17 +1,36 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
+#include <filesystem>
 
 #include "embedding_store.h"
 
+#define IGNORE_TEST if(0)
+#define ASSERT(x) if(!(x)){tw.~TestWrapper();assert(x);}
 
-#define ENABLE_TEST 1
-#define IGNORE_TEST 0
+namespace fs = std::filesystem;
+
+class TestWrapper {
+    private:
+        fs::path dir_path;
+    public:
+        TestWrapper(const std::string& dir) : dir_path(dir) {}
+        ~TestWrapper(){
+            auto n = fs::remove_all(dir_path);
+            std::cout << "Removed " << n << " files" << std::endl;
+        }
+        fs::path get_dir_path(){
+            return dir_path;
+        }
+};  
+
 
 int main(int argc, char** argv){
-    if(ENABLE_TEST){
+    {
+        TestWrapper tw("test_files/basic_test");
+
         std::cout << "TEST -- BASIC..." << std::endl;
-        EmbeddingStore store("test_files/basic_test", 2, 1024, 1024);        
+        EmbeddingStore store(tw.get_dir_path().c_str(), 2, 1024, 1024);        
         
         float k1[2] = {1.0, 1.0}; std::string v1 = "v1";
         float k2[2] = {0.0, 1.0}; std::string v2 = "v2interesting";
@@ -29,9 +48,8 @@ int main(int argc, char** argv){
         }
 
         std::vector<std::string> closest = store.get_k_closest(k1, 1, 1, DistanceMetric::cosine_similarity);
-        assert(closest.size() == 1);
-        std::cout << closest[0] << std::endl;
-        assert(closest[0] == "v1");
+        ASSERT(closest.size() == 1);
+        ASSERT(closest[0] == "v1");
 
         // assert(closest[1][0] == 0.9f);
         // assert(closest[1][1] == 0.9f);

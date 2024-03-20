@@ -1,5 +1,6 @@
 #include <cmath>
 #include <stdexcept>
+#include <iostream>
 
 #include "utils.h"
 

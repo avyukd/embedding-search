@@ -13,6 +13,7 @@
 #include <thread>
 #include <functional>
 #include <filesystem>
+#include <iostream>
 
 #include "constants.h"
 #include "distance_metric.h"
@@ -45,11 +46,11 @@ class EmbeddingStore {
         fd = open(path_str, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         assert(fd != -1);
 
-        int alloc = ftruncate(embedding_store_fd, max_size);
+        int alloc = ftruncate(fd, max_size);
         assert(alloc != -1);
 
         mmap_addr = (char*) mmap(
-            NULL, max_embedding_store_size, PROT_READ | PROT_WRITE, MAP_SHARED, embedding_store_fd, 0);
+            NULL, max_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         assert(mmap_addr != MAP_FAILED);
     }
 
@@ -152,20 +153,20 @@ class EmbeddingStore {
     }
 
     int add_embedding(float* embedding, std::string value){
-        uint32_t value_num_chars = value.size() + 1;
+        uint32_t value_size = value.size();
 
-        if(!check_bounds(value_num_chars)) return -1;
+        if(!check_bounds(value_size)) return -1;
 
         uint32_t num_embedding_bytes = embedding_size * sizeof(float);
         memcpy(embedding_store_mmap_addr + embedding_store_write_idx, embedding, num_embedding_bytes);
+
         memcpy(embedding_to_object_map_mmap_addr + embedding_to_object_map_write_idx, &object_store_write_idx, OBJECT_STORE_IDX_TYPE_SIZE);
-        
-        memcpy(object_store_mmap_addr + object_store_write_idx, &value_num_chars, OBJECT_STORE_IDX_TYPE_SIZE);
-        memcpy(object_store_mmap_addr + object_store_write_idx + OBJECT_STORE_IDX_TYPE_SIZE, value.c_str(), value_num_chars);
+        memcpy(object_store_mmap_addr + object_store_write_idx, &value_size, OBJECT_STORE_IDX_TYPE_SIZE);
+        memcpy(object_store_mmap_addr + object_store_write_idx + OBJECT_STORE_IDX_TYPE_SIZE, value.c_str(), value_size); // won't copy null char
 
         embedding_store_write_idx += num_embedding_bytes;
         embedding_to_object_map_write_idx += OBJECT_STORE_IDX_TYPE_SIZE;
-        object_store_write_idx += value_num_chars + OBJECT_STORE_IDX_TYPE_SIZE;
+        object_store_write_idx += value_size + OBJECT_STORE_IDX_TYPE_SIZE;
 
         return 0;
     }   
@@ -198,8 +199,8 @@ class EmbeddingStore {
                 for(uint32_t i = start; i < end; i++){
                     float distance = compute_distance(
                         embedding,
-                        embedding_store_mmap_addr + i * this->embedding_size * sizeof(float), 
-                        embedding_size, 
+                        this->embedding_store_mmap_addr + i * this->embedding_size * sizeof(float), 
+                        this->embedding_size, 
                         metric
                     );
 
@@ -226,13 +227,13 @@ class EmbeddingStore {
                 embedding_to_object_map_mmap_addr + idx * OBJECT_STORE_IDX_TYPE_SIZE,
                 OBJECT_STORE_IDX_TYPE_SIZE
             );
-            uint32_t value_num_chars = char_to_uint32_t(
+            uint32_t value_size = char_to_uint32_t(
                 object_store_mmap_addr + object_store_offset,
                 OBJECT_STORE_IDX_TYPE_SIZE
             );
             std::string value = std::string(
                 object_store_mmap_addr + object_store_offset + OBJECT_STORE_IDX_TYPE_SIZE,
-                value_num_chars
+                value_size
             );
             result.push_back(value);
         }
