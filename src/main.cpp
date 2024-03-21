@@ -1,39 +1,26 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+#include "embedding_store.h"
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
-int add(int i, int j) {
-    return i + j;
-}
-
 namespace py = pybind11;
 
-PYBIND11_MODULE(cmake_example, m) {
-    m.doc() = R"pbdoc(
-        Pybind11 example plugin
-        -----------------------
 
-        .. currentmodule:: cmake_example
+PYBIND11_MODULE(embedding_search, m) {
+    py::class_<EmbeddingStore> embedding_store(m, "EmbeddingStore");
 
-        .. autosummary::
-           :toctree: _generate
+    embedding_store.def(py::init(&EmbeddingStore::create))
+        .def("addEmbedding", &EmbeddingStore::add_embedding)
+        .def("getKClosest", &EmbeddingStore::get_k_closest);
 
-           add
-           subtract
-    )pbdoc";
-
-    m.def("add", &add, R"pbdoc(
-        Add two numbers
-
-        Some other explanation about the add function.
-    )pbdoc");
-
-    m.def("subtract", [](int i, int j) { return i - j; }, R"pbdoc(
-        Subtract two numbers
-
-        Some other explanation about the subtract function.
-    )pbdoc");
+    py::enum_<DistanceMetric>(embedding_store, "DistanceMetric")
+        .value("cosine_similarity", DistanceMetric::cosine_similarity)
+        .value("manhattan", DistanceMetric::manhattan)
+        .value("l2_squared", DistanceMetric::l2_squared)
+        .export_values();
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
@@ -41,3 +28,4 @@ PYBIND11_MODULE(cmake_example, m) {
     m.attr("__version__") = "dev";
 #endif
 }
+

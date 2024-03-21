@@ -9,7 +9,7 @@ def test_main():
 		for j in range(5):
 			store.addEmbedding(np.array([float(i), float(j)]), str(i) + str(j))
 	
-	closest = store.getKClosest(np.array([0.5, 0.5]), 5, 1, es.EmbeddingStore.DistanceMetric.cosine_similarity) 
+	closest = store.getKClosest(np.array([0.5, 0.5]), 5, 3, es.EmbeddingStore.DistanceMetric.cosine_similarity) 
 	exp_values = ["00", "11", "22", "33", "44"]
 	assert(closest == exp_values)
 	shutil.rmtree(fp)
