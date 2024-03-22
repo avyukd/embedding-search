@@ -175,10 +175,10 @@ class EmbeddingStore {
         embedding_to_object_map_write_idx += OBJECT_STORE_IDX_TYPE_SIZE;
         object_store_write_idx += value_size + OBJECT_STORE_IDX_TYPE_SIZE;
 
-        return 0;
+        return 0;    
     }   
 
-    std::vector<std::string> get_k_closest(
+    std::vector<std::pair<float, std::string>> get_k_closest(
         std::vector<float> embedding, uint32_t k, 
         uint32_t num_threads = 1, DistanceMetric metric = DistanceMetric::cosine_similarity){
 
@@ -189,6 +189,10 @@ class EmbeddingStore {
         uint32_t num_rows = (embedding_store_write_idx - DEFAULT_WRITE_IDX) / (embedding_size * sizeof(float));
         uint32_t num_rows_per_thread = num_rows / num_threads;
         uint32_t leftover = num_rows % num_threads;
+
+        std::cout << "num_rows: " << num_rows << std::endl;
+        std::cout << "num_rows_per_thread: " << num_rows_per_thread << std::endl;
+        std::cout << "leftover: " << leftover << std::endl;
 
         std::mutex pq_mutex;
         std::priority_queue<std::pair<float, uint32_t>, 
@@ -205,6 +209,7 @@ class EmbeddingStore {
             if(i == num_threads - 1){
                 end += leftover;
             }
+            std::cout << "start: " << start << " end: " << end << std::endl;
 
             std::thread t([this, &embedding, &pq, start, end, metric, k, &pq_mutex](){
                 for(uint32_t i = start; i <= end; i++){
@@ -233,9 +238,9 @@ class EmbeddingStore {
             t.join();
         }
 
-        std::vector<std::string> result;
+        std::vector<std::pair<float, std::string>> result;
         while(!pq.empty()){
-            auto [_, idx] = pq.top(); pq.pop();
+            auto [dist, idx] = pq.top(); pq.pop();
             uint32_t object_store_offset = char_to_uint32_t(
                 embedding_to_object_map_mmap_addr + DEFAULT_WRITE_IDX + idx * OBJECT_STORE_IDX_TYPE_SIZE,
                 OBJECT_STORE_IDX_TYPE_SIZE
@@ -248,11 +253,15 @@ class EmbeddingStore {
                 object_store_mmap_addr + object_store_offset + OBJECT_STORE_IDX_TYPE_SIZE,
                 value_size
             );
-            result.push_back(value);
+            result.push_back(std::make_pair(dist, value));
         }
 
-        std::reverse(result.begin(), result.end());
+        reverse(result.begin(), result.end());
         return result;
+    }
+
+    void close_store(){ // for the python binding
+        commit_write_indices();
     }
 };
 

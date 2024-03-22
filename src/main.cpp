@@ -8,13 +8,13 @@
 
 namespace py = pybind11;
 
-
 PYBIND11_MODULE(embedding_search, m) {
     py::class_<EmbeddingStore> embedding_store(m, "EmbeddingStore");
 
     embedding_store.def(py::init(&EmbeddingStore::create))
         .def("addEmbedding", &EmbeddingStore::add_embedding)
-        .def("getKClosest", &EmbeddingStore::get_k_closest);
+        .def("getKClosest", &EmbeddingStore::get_k_closest)
+        .def("close", &EmbeddingStore::close_store);
 
     py::enum_<DistanceMetric>(embedding_store, "DistanceMetric")
         .value("cosine_similarity", DistanceMetric::cosine_similarity)
