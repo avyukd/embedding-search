@@ -26,8 +26,8 @@ class InvertedIndex {
     public:
 
     // each block includes the key + values -- with defaults, we can store (64-16) / 4 = 12 values
-    InvertedIndex(const fs::path& path, uint32_t max_size, uint32_t block_size = 64, uint32_t key_length = 16) : 
-        index(path, max_size),
+    InvertedIndex(const char* dir, uint32_t max_size, uint32_t block_size = 64, uint32_t key_length = 16) : 
+        index(fs::path(dir) / INVERTED_INDEX_FN, max_size),
         block_size(block_size),
         key_length(key_length)
     {}
@@ -95,7 +95,8 @@ class InvertedIndex {
 
     std::pair<uint32_t, bool> bsearch(const std::string& key){
         uint32_t num_keys = get_num_keys();
-        if(!num_keys)
+        std::cout << "num_keys: " << num_keys << std::endl;
+        if(num_keys == 0)
             return std::make_pair(0, false);
 
         uint32_t l = 0;
