@@ -13,7 +13,9 @@
 
 namespace fs = std::filesystem;
 
-struct FileWrapper {
+class FileWrapper {
+    public:
+    
     int fd = -1; 
     char* mmap_addr = nullptr;
     uint32_t write_idx = DEFAULT_WRITE_IDX;
@@ -21,7 +23,7 @@ struct FileWrapper {
 
     FileWrapper() = default;
 
-    void init(const fs::path& path, uint32_t max_size){
+    FileWrapper(const fs::path& path, uint32_t max_size){
         bool exists = fs::exists(path);
         mmap_size = exists ? fs::file_size(path) : max_size;
         // std::cout << "mmap_size: " << mmap_size << std::endl;
@@ -55,6 +57,11 @@ struct FileWrapper {
         close(fd);
     }
 
+    int write(const void* data, uint32_t size, uint32_t idx){
+        memcpy(mmap_addr + idx, data, size);
+        return 0;
+    }
+
     int write(const void* data, uint32_t size){
         if(write_idx + size > mmap_size){
             // std::cout << "write_idx: " << write_idx << " size: " << size << " mmap_size: " << mmap_size << std::endl;
@@ -63,5 +70,9 @@ struct FileWrapper {
         memcpy(mmap_addr + write_idx, data, size);
         write_idx += size;
         return 0;
+    }
+
+    char* get_start_addr(){
+        return mmap_addr + write_idx;
     }
 };

@@ -18,7 +18,7 @@
 #include "constants.h"
 #include "distance_metric.h"
 #include "file_wrapper.h"
-//#include "inverted_index.h"
+#include "inverted_index.h"
 #include "utils.h"
 
 namespace fs = std::filesystem;
@@ -65,9 +65,9 @@ class EmbeddingStore {
             throw std::runtime_error("All or none of the files should exist, but this is not the case. Invalid state.");
         }
 
-        embedding_store.init(embedding_store_path, max_embedding_store_size);
-        embedding_to_object_map.init(embedding_to_object_map_path, max_embedding_to_object_map_size);
-        object_store.init(object_store_path, max_object_store_size);
+        embedding_store = FileWrapper(embedding_store_path, max_embedding_store_size);
+        embedding_to_object_map = FileWrapper(embedding_to_object_map_path, max_embedding_to_object_map_size);
+        object_store = FileWrapper(object_store_path, max_object_store_size);
     }
 
     static EmbeddingStore create(
@@ -79,9 +79,8 @@ class EmbeddingStore {
     }
 
     int add_embedding(std::vector<float> embedding, std::string value){
-        if(embedding.size() != embedding_size){
+        if(embedding.size() != embedding_size)
             return -1;
-        }
         // todo: everything is messed up if you write past eof on one file -- no good recovery rn
         uint32_t value_size = value.size();
         if(embedding_store.write(embedding.data(), embedding_size * sizeof(float)) < 0)
