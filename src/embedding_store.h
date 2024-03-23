@@ -17,6 +17,8 @@
 
 #include "constants.h"
 #include "distance_metric.h"
+#include "file_wrapper.h"
+#include "inverted_index.h"
 
 namespace fs = std::filesystem;
 
@@ -27,6 +29,8 @@ class EmbeddingStore {
     uint32_t max_object_store_size;
     uint32_t max_embedding_store_size;
     uint32_t max_embedding_to_object_map_size;
+
+    bool hybrid_search_enabled;
 
     int embedding_store_fd = -1;
     char* embedding_store_mmap_addr = nullptr;
@@ -41,9 +45,9 @@ class EmbeddingStore {
     uint32_t object_store_write_idx = DEFAULT_WRITE_IDX;
 
     void mmap_path(const fs::path& path, int& fd, char*& mmap_addr, uint32_t max_size){
-        const char* path_str = path.c_str();
+        const char* path_c_str = path.c_str();
         
-        fd = open(path_str, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+        fd = open(path_c_str, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         assert(fd != -1);
 
         int alloc = ftruncate(fd, max_size);
@@ -103,12 +107,14 @@ class EmbeddingStore {
     EmbeddingStore(
         const char* dir, uint32_t embedding_size, 
         uint32_t max_embedding_store_size = DEFAULT_MAX_EMBEDDING_STORE_SIZE,
-        uint32_t max_object_store_size = DEFAULT_MAX_OBJECT_STORE_SIZE
+        uint32_t max_object_store_size = DEFAULT_MAX_OBJECT_STORE_SIZE,
+        bool hybrid_search_enabled = false
     ) : 
         embedding_size(embedding_size),
         max_object_store_size(max_object_store_size),
         max_embedding_store_size(max_embedding_store_size),
-        max_embedding_to_object_map_size(max_embedding_store_size / embedding_size * sizeof(uint32_t))
+        max_embedding_to_object_map_size(max_embedding_store_size / embedding_size * sizeof(uint32_t)),
+        hybrid_search_enabled(hybrid_search_enabled)
     {
         fs::path dir_path = dir;
         if(!fs::exists(dir_path)){
@@ -190,9 +196,9 @@ class EmbeddingStore {
         uint32_t num_rows_per_thread = num_rows / num_threads;
         uint32_t leftover = num_rows % num_threads;
 
-        std::cout << "num_rows: " << num_rows << std::endl;
-        std::cout << "num_rows_per_thread: " << num_rows_per_thread << std::endl;
-        std::cout << "leftover: " << leftover << std::endl;
+        // std::cout << "num_rows: " << num_rows << std::endl;
+        // std::cout << "num_rows_per_thread: " << num_rows_per_thread << std::endl;
+        // std::cout << "leftover: " << leftover << std::endl;
 
         std::mutex pq_mutex;
         std::priority_queue<std::pair<float, uint32_t>, 
@@ -209,7 +215,7 @@ class EmbeddingStore {
             if(i == num_threads - 1){
                 end += leftover;
             }
-            std::cout << "start: " << start << " end: " << end << std::endl;
+            // std::cout << "start: " << start << " end: " << end << std::endl;
 
             std::thread t([this, &embedding, &pq, start, end, metric, k, &pq_mutex](){
                 for(uint32_t i = start; i <= end; i++){

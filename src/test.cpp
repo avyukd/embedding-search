@@ -3,12 +3,13 @@
 #include <cassert>
 #include <filesystem>
 #include <stdint.h>
+#include <unordered_set>
 
 #include "embedding_store.h"
 
 #define IGNORE_TEST if(0)
 #define ASSERT(x) if(!(x)){tw.~TestWrapper();assert(x);}
-#define PRINT_VEC(x) for(auto i : x){std::cout << i << " ";}
+#define PRINT_VEC(x) for(auto i : x){std::cout << i.second << " ";}
 
 namespace fs = std::filesystem;
 
@@ -133,6 +134,37 @@ int main(int argc, char** argv){
         ASSERT(closest[2].second == "33");
         ASSERT(closest[3].second == "44");
         ASSERT(closest[4].second == "55");
+
+        std::cout << "PASSED" << std::endl;
+    }
+
+    {
+        TestWrapper tw("test_files/multi_thread_test");
+        std::cout << "TEST -- MULTI THREAD EDGE 1..." << std::endl;
+
+        EmbeddingStore store(tw.get_dir_path().c_str(), 2, 1024, 1024);
+        std::vector<float> keys = {1, 2, 3, 4, 5};
+
+        size_t i = 0; 
+        for(float k1 : keys){
+            if(i >= 10){
+                break;
+            }
+            for(float k2 : keys){
+                std::string v = std::to_string((int) k1) + std::to_string((int) k2);
+                store.add_embedding({k1, k2}, v);
+                i++;
+            }
+        }
+
+        auto closest = store.get_k_closest({1, 1}, 10, 10, DistanceMetric::cosine_similarity);
+        ASSERT(closest.size() == 10);
+
+        auto closest_values = std::unordered_set<std::string>();
+        for(auto c : closest){
+            closest_values.insert(c.second);
+        }
+        ASSERT(closest_values.size() == 10);
 
         std::cout << "PASSED" << std::endl;
     }
