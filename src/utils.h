@@ -13,9 +13,9 @@ float char_to_float(char* c, uint32_t len){
     return f;
 }
 
-float char_to_uint32_t(char* c, uint32_t len){
+float char_to_uint32_t(char* c){
     uint32_t u;
-    memcpy(&u, c, len);
+    memcpy(&u, c, sizeof(uint32_t));
     return u;
 }
 

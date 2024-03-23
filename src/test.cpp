@@ -29,10 +29,12 @@ class TestWrapper {
         }
 };  
 
-void add_embeddings(EmbeddingStore& store, std::vector<std::pair<std::vector<float>, std::string>> embeddings){
+int add_embeddings(EmbeddingStore& store, std::vector<std::pair<std::vector<float>, std::string>> embeddings){
+    int codes = 0;
     for(auto [k, v] : embeddings){
-        store.add_embedding(k, v);
+        codes += store.add_embedding(k, v);
     }
+    return codes;
 }
 
 bool close(float a, float b){
@@ -52,13 +54,14 @@ int main(int argc, char** argv){
         std::vector<float> v4 = {0.0, 0.0};
         std::vector<float> v5 = {0.9, 0.9};
 
-        add_embeddings(store, {
+        int code = add_embeddings(store, {
             {v1, "v1"}, 
             {v2, "v2"}, 
             {v3, "v3"}, 
             {v4, "v4"}, 
             {v5, "v5"}
         });
+        ASSERT(code == 0);
 
         auto closest = store.get_k_closest(v1, 2, 1, DistanceMetric::cosine_similarity);
         ASSERT(closest.size() == 2);
