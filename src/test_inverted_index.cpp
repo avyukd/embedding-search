@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <stdint.h>
 #include <unordered_set>
+#include <string>
+#include <numeric>
 
 #include "inverted_index.h"
 #include "test_utils.h"
@@ -52,6 +54,50 @@ int main(int argc, char** argv){
         
         std::vector<uint32_t> new_key1_vals = ii.search("key1");
         ASSERT(equal_vecs(new_key1_vals, all_exp_key1_keys));
+
+        std::cout << "PASSED" << std::endl;
+    }
+
+    {
+        TestWrapper tw("test_files/sorted_ii_test");
+
+        std::cout << "TEST -- SORTED..." << std::endl;
+
+        InvertedIndex ii(tw.get_dir_path().c_str(), 1024, 64, 16);
+
+        ii.insert("b", {2});
+        ii.insert("a", {1});
+        ii.insert("c", {3});
+        ii.insert("e", {5});
+        ii.insert("d", {4});
+
+        uint32_t start_val = 1; 
+        for (const std::string& key : {"a", "b", "c", "d", "e"}){
+            uint32_t found_val = ii.search(key)[0];
+            ASSERT(start_val == found_val);
+            start_val++;
+        }
+
+        std::cout << "PASSED" << std::endl;
+    }
+
+    {
+        TestWrapper tw("test_files/dup_key_ii_test");
+
+        std::cout << "TEST -- DUPLICATE KEYS..." << std::endl;
+
+        InvertedIndex ii(tw.get_dir_path().c_str(), 1024, 32, 16); // max 4 vals
+
+        std::vector<uint32_t> vals(10);
+        std::iota(vals.begin(), vals.end(), 0);
+
+        for(auto v: vals)
+            ii.insert("key", {v});
+        
+        std::vector<uint32_t> key_vals = ii.search("key");
+        std::sort(key_vals.begin(), key_vals.end());
+
+        ASSERT(equal_vecs(key_vals, vals));
 
         std::cout << "PASSED" << std::endl;
     }
