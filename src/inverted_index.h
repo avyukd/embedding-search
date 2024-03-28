@@ -23,6 +23,11 @@ class InvertedIndex {
         uint32_t block_size;
         uint32_t key_length;
 
+        void get_padded_buf(const std::string& key, char* buf){
+            memset(buf, 0, key_length);
+            memcpy(buf, key.c_str(), std::min((uint32_t) key.size(), key_length));
+        }
+
     public:
 
     // each block includes the key + values -- with defaults, we can store (64-16) / 4 = 12 values
@@ -33,6 +38,7 @@ class InvertedIndex {
     {}
 
     uint32_t get_num_keys(){
+        std::cout << "index.write_idx: " << index.write_idx << std::endl;
         return (index.write_idx - DEFAULT_WRITE_IDX) / block_size;
     }
 
@@ -45,18 +51,24 @@ class InvertedIndex {
 
         if(new_key){
             if(pos != num_keys){
+                std::cout << "memmove" << std::endl;
                 memmove(
                     index.get_start_addr() + (pos + 1) * block_size,
                     index.get_start_addr() + pos * block_size,
                     (num_keys - pos) * block_size
                 );
             }
-            
+
+            char key_str_buf[key_length];
+            get_padded_buf(key, key_str_buf);
+
             uint32_t block_write_idx = pos * block_size; 
-            index.write(key.c_str(), key_length, block_write_idx);
+            index.write(key_str_buf, key_length, block_write_idx);
             block_write_idx += key_length;
 
             for(uint32_t v : values){
+                std::cout << "v: " << v << std::endl;
+                std::cout << "block_write_idx: " << block_write_idx << std::endl;
                 index.write(&v, sizeof(uint32_t), block_write_idx);
                 block_write_idx += sizeof(uint32_t);
             }
@@ -94,16 +106,23 @@ class InvertedIndex {
     }
 
     std::pair<uint32_t, bool> bsearch(const std::string& key){
+        char key_search_buf[key_length];
+        get_padded_buf(key, key_search_buf);
+
         uint32_t num_keys = get_num_keys();
         std::cout << "num_keys: " << num_keys << std::endl;
         if(num_keys == 0)
             return std::make_pair(0, false);
 
-        uint32_t l = 0;
-        uint32_t r = num_keys - 1;
+        int l = 0;
+        int r = num_keys - 1;
         while(l <= r){
-            uint32_t m = l + (r - l) / 2;
-            int cmp = memcmp(key.c_str(), index.get_start_addr() + m * block_size, key_length);
+            int m = l + (r - l) / 2;
+            int cmp = memcmp(key_search_buf, index.get_start_addr() + m * block_size, key_length);
+            std::cout << "l: " << l << " r: " << r << " m: " << m << std::endl;
+            std::cout << "cmp: " << cmp << std::endl;
+            std::cout << "key: " << key << std::endl;
+            std::cout << std::string(index.get_start_addr() + m * block_size, key_length) << std::endl;
             if(cmp == 0){
                 return std::make_pair(m, true);
             }else if(cmp < 0){
@@ -120,15 +139,18 @@ class InvertedIndex {
             return -1;
         }
         auto [idx, found] = bsearch(key);
+        std::cout << "idx: " << idx << std::endl;
         insert_block_in_position(idx, key, values, !found);
         return 0;
     }   
 
     std::vector<uint32_t> get_values_from_block(uint32_t block_idx){
+        std::cout << "block_idx: " << block_idx << std::endl;
         std::vector<uint32_t> values;
         char* value_pos = index.get_start_addr() + block_idx * block_size + key_length;
         uint32_t curr_value = char_to_uint32_t(value_pos);
         while(curr_value != MAX_UINT32){
+            std::cout << "curr_value: " << curr_value << std::endl;
             values.push_back(curr_value);
             value_pos += 4;
             curr_value = char_to_uint32_t(value_pos);
@@ -137,14 +159,20 @@ class InvertedIndex {
     }
 
     std::vector<uint32_t> search(const std::string& key){
+        char key_search_buf[key_length];
+        get_padded_buf(key, key_search_buf);
+
         std::vector<uint32_t> values;
         auto [idx, found] = bsearch(key);
         if(!found)
             return values; 
 
-        uint32_t back_idx = idx;
+        std::cout << "search idx " << idx << std::endl;
+        std::cout << "found " << found << std::endl;
+
+        int back_idx = idx;
         while(back_idx >= 0 
-            && memcmp(key.c_str(), index.get_start_addr() + back_idx * block_size, key_length) == 0){
+            && memcmp(key_search_buf, index.get_start_addr() + back_idx * block_size, key_length) == 0){
             std::vector<uint32_t> block_values = get_values_from_block(back_idx);
             values.insert(values.end(), block_values.begin(), block_values.end());
             back_idx--;
@@ -152,7 +180,7 @@ class InvertedIndex {
 
         uint32_t forward_idx = idx + 1;
         while(forward_idx < get_num_keys()
-            && memcmp(key.c_str(), index.get_start_addr() + forward_idx * block_size, key_length) == 0){
+            && memcmp(key_search_buf, index.get_start_addr() + forward_idx * block_size, key_length) == 0){
             std::vector<uint32_t> block_values = get_values_from_block(forward_idx);
             values.insert(values.end(), block_values.begin(), block_values.end());
             forward_idx++;

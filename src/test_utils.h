@@ -4,7 +4,8 @@
 
 #define IGNORE_TEST if(0)
 #define ASSERT(x) if(!(x)){tw.~TestWrapper();assert(x);}
-#define PRINT_VEC(x) for(auto i : x){std::cout << i.second << " ";}
+#define PRINT_VEC(x) for(auto i : x){std::cout << i << " ";}
+#define PRINT_VEC_SECOND(x) for(auto i : x){std::cout << i.second << " ";}
 
 namespace fs = std::filesystem;
 

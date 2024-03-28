@@ -60,7 +60,7 @@ class FileWrapper {
     }
 
     int write(const void* data, uint32_t size, uint32_t idx){
-        memcpy(mmap_addr + idx, data, size);
+        memcpy(mmap_addr + DEFAULT_WRITE_IDX + idx, data, size);
         return 0;
     }
 
@@ -75,6 +75,6 @@ class FileWrapper {
     }
 
     char* get_start_addr(){
-        return mmap_addr + write_idx;
+        return mmap_addr + DEFAULT_WRITE_IDX;
     }
 };

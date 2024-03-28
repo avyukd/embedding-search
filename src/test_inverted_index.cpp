@@ -39,6 +39,8 @@ int main(int argc, char** argv){
         ASSERT(equal_vecs(key1_vals, v1));
 
         std::vector<uint32_t> key2_vals = ii.search("key2");
+        std::cout << "key2_vals: ";
+        PRINT_VEC(key2_vals);
         ASSERT(equal_vecs(key2_vals, v2));
 
         std::vector<uint32_t> v1_add = {6, 7, 8, 9, 10};
