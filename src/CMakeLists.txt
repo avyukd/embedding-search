@@ -6,3 +6,4 @@ project(embedding_search_cpp)
 
 add_executable(test_integration test_integration.cpp)
 add_executable(test_inverted_index test_inverted_index.cpp)
+add_executable(test_hybrid_search test_hybrid_search.cpp)

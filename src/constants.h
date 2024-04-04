@@ -15,3 +15,5 @@ uint32_t DEFAULT_MAX_EMBEDDING_STORE_SIZE = 1024 * 1024; // 1024 vectors of 1024
 uint32_t DEFAULT_MAX_OBJECT_STORE_SIZE = 1024 * 1024; // 1024 objects of 1024 bytes each
 
 const uint32_t MAX_UINT32 = 0xffffffff;
+
+const char* COMMON_WORDS_FN = "common_words.txt";

@@ -31,7 +31,7 @@ class FileWrapper {
 
         const char* path_c_str = path.c_str();
 
-        std::cout << "path_c_str: " << path_c_str << std::endl;
+        // std::cout << "path_c_str: " << path_c_str << std::endl;
         
         fd = open(path_c_str, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         assert(fd != -1);

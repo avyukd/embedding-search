@@ -8,14 +8,6 @@
 #include "embedding_store.h"
 #include "test_utils.h"
 
-int add_embeddings(EmbeddingStore& store, std::vector<std::pair<std::vector<float>, std::string>> embeddings){
-    int codes = 0;
-    for(auto [k, v] : embeddings){
-        codes += store.add_embedding(k, v);
-    }
-    return codes;
-}
-
 int main(int argc, char** argv){
     {
         TestWrapper tw("test_files/basic_test");

@@ -13,7 +13,11 @@ PYBIND11_MODULE(embedding_search, m) {
 
     embedding_store.def(py::init(&EmbeddingStore::create))
         .def("addEmbedding", &EmbeddingStore::add_embedding)
-        .def("getKClosest", &EmbeddingStore::get_k_closest)
+        .def(
+            "getKClosest", &EmbeddingStore::get_k_closest,
+            "Get the k closest embeddings to the given embedding",
+            py::arg("embedding"), py::arg("k"), py::arg("num_threads"), py::arg("metric")
+        )
         .def("close", &EmbeddingStore::close_store);
 
     py::enum_<DistanceMetric>(embedding_store, "DistanceMetric")

@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <iostream>
 
+#include "embedding_store.h"
+
 #define IGNORE_TEST if(0)
 #define ASSERT(x) if(!(x)){tw.~TestWrapper();assert(x);}
 #define PRINT_VEC(x) for(auto i : x){std::cout << i << " ";}
@@ -30,4 +32,12 @@ class TestWrapper {
 
 bool close(float a, float b){
     return std::abs(a - b) < 1e-6;
+}
+
+int add_embeddings(EmbeddingStore& store, std::vector<std::pair<std::vector<float>, std::string>> embeddings){
+    int codes = 0;
+    for(auto [k, v] : embeddings){
+        codes += store.add_embedding(k, v);
+    }
+    return codes;
 }

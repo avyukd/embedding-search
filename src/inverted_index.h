@@ -17,6 +17,8 @@
 
 namespace fs = std::filesystem;
 
+const uint32_t DEFAULT_BLOCK_SIZE = 64;
+
 class InvertedIndex {
     private:
         FileWrapper index;
@@ -31,7 +33,7 @@ class InvertedIndex {
     public:
 
     // each block includes the key + values -- with defaults, we can store (64-16) / 4 = 12 values
-    InvertedIndex(const char* dir, uint32_t max_size, uint32_t block_size = 64, uint32_t key_length = 16) : 
+    InvertedIndex(const char* dir, uint32_t max_size, uint32_t block_size = DEFAULT_BLOCK_SIZE, uint32_t key_length = 16) : 
         index(fs::path(dir) / INVERTED_INDEX_FN, max_size),
         block_size(block_size),
         key_length(key_length)

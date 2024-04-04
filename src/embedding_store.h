@@ -14,11 +14,16 @@
 #include <functional>
 #include <filesystem>
 #include <iostream>
+#include <unordered_map>
 
 #include "constants.h"
 #include "distance_metric.h"
+#include "hybrid_metric.h"
 #include "file_wrapper.h"
+
 #include "inverted_index.h"
+#include "inverted_index_utils.h"
+
 #include "utils.h"
 
 namespace fs = std::filesystem;
@@ -31,11 +36,13 @@ class EmbeddingStore {
     uint32_t max_embedding_store_size;
     uint32_t max_embedding_to_object_map_size;
 
-    bool hybrid_search_enabled;
+    InvertedIndex* inverted_index = nullptr; // stores keys to object store idxs 
 
     FileWrapper embedding_store;
     FileWrapper embedding_to_object_map;
     FileWrapper object_store;
+
+    uint32_t num_embeddings;
 
     public:
 
@@ -49,7 +56,8 @@ class EmbeddingStore {
         max_object_store_size(max_object_store_size),
         max_embedding_store_size(max_embedding_store_size),
         max_embedding_to_object_map_size(max_embedding_store_size / embedding_size * sizeof(uint32_t)),
-        hybrid_search_enabled(hybrid_search_enabled)
+        inverted_index(nullptr),
+        num_embeddings(0)
     {
         fs::path dir_path = dir;
         if(!fs::exists(dir_path)){
@@ -68,6 +76,11 @@ class EmbeddingStore {
         embedding_store = FileWrapper(embedding_store_path, max_embedding_store_size);
         embedding_to_object_map = FileWrapper(embedding_to_object_map_path, max_embedding_to_object_map_size);
         object_store = FileWrapper(object_store_path, max_object_store_size);
+
+        if(hybrid_search_enabled){
+            // todo: scrutinize this default a bit more
+            inverted_index = new InvertedIndex(dir, (max_embedding_store_size / embedding_size) * DEFAULT_BLOCK_SIZE);
+        }
     }
 
     static EmbeddingStore create(
@@ -91,12 +104,77 @@ class EmbeddingStore {
             return -4;
         if(object_store.write(value.c_str(), value_size) < 0) // won't copy null terminating char
             return -5;
+
+        if(inverted_index){
+            std::vector<std::string> keys = get_keys_from_string(value);
+            for(const std::string& key : keys){
+                inverted_index->insert(key, {num_embeddings}); // num_embeddings serves as a unique id for now, assuming no deletes
+            }
+        }
+
+        num_embeddings++;
         return 0;    
     }   
 
+    // hybrid search
+    std::vector<std::pair<float, std::string>> get_k_closest_hybrid_weighted(
+        std::string search_str, std::vector<float> embedding, uint32_t k, 
+        uint32_t num_threads = 1, DistanceMetric distance_metric = DistanceMetric::cosine_similarity,
+        float keyword_weight = 0.5
+    ){
+        if(!inverted_index){
+            return {};
+        }
+
+        if(embedding.size() != embedding_size){
+            return {};
+        }
+
+        if(keyword_weight == 0)
+            return get_k_closest(embedding, k, num_threads, distance_metric);
+
+        std::unordered_map<uint32_t, uint32_t> idx_to_count;
+        std::vector<std::string> keys = get_keys_from_string(search_str);
+        for(const std::string& key : keys){
+            std::vector<uint32_t> vals = inverted_index->search(key);
+            for(auto val: vals)
+                idx_to_count[val]++;
+        }
+
+        auto comp = [](const std::pair<uint32_t, uint32_t>& a, const std::pair<uint32_t, uint32_t>& b){
+                return a.second < b.second;
+            };
+        uint32_t min_count = std::min_element(idx_to_count.begin(), idx_to_count.end(), comp)->second;
+        uint32_t max_count = std::max_element(idx_to_count.begin(), idx_to_count.end(), comp)->second;
+
+        std::unordered_map<uint32_t, float> idx_to_score;
+        for(auto [idx, count]: idx_to_count){
+            float weight = (count - min_count) / (max_count - min_count); // normalize to [0, 1]
+            idx_to_score[idx] = weight; // max score is 1, closest to 0 is best
+        }
+
+        return get_k_closest_helper(embedding, k, num_threads, distance_metric, 
+            [&idx_to_score, &keyword_weight](uint32_t idx, float distance){
+                return (1.0f - idx_to_score[idx]) * keyword_weight + distance * (1 - keyword_weight);
+            }
+        );
+
+    }
+
     std::vector<std::pair<float, std::string>> get_k_closest(
         std::vector<float> embedding, uint32_t k, 
-        uint32_t num_threads = 1, DistanceMetric metric = DistanceMetric::cosine_similarity){
+        uint32_t num_threads = 1, DistanceMetric metric = DistanceMetric::cosine_similarity
+    ){
+        return get_k_closest_helper(embedding, k, num_threads, metric, [](uint32_t idx, float distance){
+            return distance;
+        });
+    }
+
+    std::vector<std::pair<float, std::string>> get_k_closest_helper(
+        std::vector<float> embedding, uint32_t k, 
+        uint32_t num_threads, DistanceMetric metric,
+        std::function<float(uint32_t, float)> custom_score_function
+    ){
 
         if(embedding.size() != embedding_size){
             return {};
@@ -105,6 +183,7 @@ class EmbeddingStore {
         uint32_t num_rows = (embedding_store.write_idx - DEFAULT_WRITE_IDX) / (embedding_size * sizeof(float));
         uint32_t num_rows_per_thread = num_rows / num_threads;
         uint32_t leftover = num_rows % num_threads;
+        assert(num_rows == num_embeddings);
 
         // std::cout << "num_rows: " << num_rows << std::endl;
         // std::cout << "num_rows_per_thread: " << num_rows_per_thread << std::endl;
@@ -127,7 +206,7 @@ class EmbeddingStore {
             }
             // std::cout << "start: " << start << " end: " << end << std::endl;
 
-            std::thread t([this, &embedding, &pq, start, end, metric, k, &pq_mutex](){
+            std::thread t([this, &embedding, &pq, start, end, metric, k, &pq_mutex, custom_score_function](){
                 for(uint32_t i = start; i <= end; i++){
                     float distance = compute_distance(
                         embedding.data(),
@@ -136,9 +215,11 @@ class EmbeddingStore {
                         metric
                     );
 
+                    float score = custom_score_function(i, distance);
+
                     std::lock_guard<std::mutex> lock(pq_mutex);
-                    if(pq.size() != k || distance < pq.top().first){
-                        pq.push(std::make_pair(distance, i));
+                    if(pq.size() != k || score < pq.top().first){
+                        pq.push(std::make_pair(score, i));
                         if(pq.size() > k){
                             pq.pop();
                         }
@@ -175,6 +256,7 @@ class EmbeddingStore {
         embedding_store.set_write_idx();
         embedding_to_object_map.set_write_idx();
         object_store.set_write_idx();
+        delete inverted_index; // will call close(fd) -- should be ok?
     }
 };
 
