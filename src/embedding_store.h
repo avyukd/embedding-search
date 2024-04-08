@@ -28,6 +28,9 @@
 
 namespace fs = std::filesystem;
 
+// TODO:
+// how are duplicate embeddings handled? 
+
 class EmbeddingStore {
     private:
     uint32_t embedding_size;
@@ -86,9 +89,10 @@ class EmbeddingStore {
     static EmbeddingStore create(
         const char* dir, uint32_t embedding_size, 
         uint32_t max_embedding_store_size = DEFAULT_MAX_EMBEDDING_STORE_SIZE,
-        uint32_t max_object_store_size = DEFAULT_MAX_OBJECT_STORE_SIZE
+        uint32_t max_object_store_size = DEFAULT_MAX_OBJECT_STORE_SIZE,
+        bool hybrid_search_enabled = false
     ){
-        return EmbeddingStore(dir, embedding_size, max_embedding_store_size, max_object_store_size);
+        return EmbeddingStore(dir, embedding_size, max_embedding_store_size, max_object_store_size, hybrid_search_enabled);
     }
 
     int add_embedding(std::vector<float> embedding, std::string value){
@@ -141,15 +145,19 @@ class EmbeddingStore {
                 idx_to_count[val]++;
         }
 
+        // for(auto [idx, count]: idx_to_count){
+        //     std::cout << "idx: " << idx << " count: " << count << std::endl;
+        // }
+
         auto comp = [](const std::pair<uint32_t, uint32_t>& a, const std::pair<uint32_t, uint32_t>& b){
                 return a.second < b.second;
             };
         uint32_t min_count = std::min_element(idx_to_count.begin(), idx_to_count.end(), comp)->second;
         uint32_t max_count = std::max_element(idx_to_count.begin(), idx_to_count.end(), comp)->second;
-
         std::unordered_map<uint32_t, float> idx_to_score;
+
         for(auto [idx, count]: idx_to_count){
-            float weight = (count - min_count) / (max_count - min_count); // normalize to [0, 1]
+            float weight = max_count == min_count ? 1 : (count - min_count) / (max_count - min_count); // normalize to [0, 1]
             idx_to_score[idx] = weight; // max score is 1, closest to 0 is best
         }
 

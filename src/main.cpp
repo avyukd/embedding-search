@@ -18,6 +18,11 @@ PYBIND11_MODULE(embedding_search, m) {
             "Get the k closest embeddings to the given embedding",
             py::arg("embedding"), py::arg("k"), py::arg("num_threads"), py::arg("metric")
         )
+        .def(
+            "getKClosestHybridWeighted", &EmbeddingStore::get_k_closest_hybrid_weighted,
+            "Get the k closest embeddings to the given embedding using a weighted hybrid distance metric",
+            py::arg("search_str"), py::arg("embedding"), py::arg("k"), py::arg("num_threads"), py::arg("metric"), py::arg("keyword_weight")
+        )
         .def("close", &EmbeddingStore::close_store);
 
     py::enum_<DistanceMetric>(embedding_store, "DistanceMetric")
