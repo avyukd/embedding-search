@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 
 const uint32_t DEFAULT_BLOCK_SIZE = 64;
 
+template <typename ValueType>
 class InvertedIndex {
     private:
         FileWrapper index;
@@ -37,14 +38,17 @@ class InvertedIndex {
         index(fs::path(dir) / INVERTED_INDEX_FN, max_size),
         block_size(block_size),
         key_length(key_length)
-    {}
+    {
+        // ensures that filler bytes are properly aligned, could change this later
+        assert((block_size - key_length) % sizeof(ValueType) == 0);
+    }
 
     uint32_t get_num_keys(){
         // std::cout << "index.write_idx: " << index.write_idx << std::endl;
         return (index.write_idx - DEFAULT_WRITE_IDX) / block_size;
     }
 
-    int insert_block_in_position(uint32_t pos, const std::string& key, const std::vector<uint32_t>& values, bool new_key){
+    int insert_block_in_position(uint32_t pos, const std::string& key, const std::vector<ValueType>& values, bool new_key){
         uint32_t num_keys = get_num_keys();
         // std::cout << "num_keys: " << num_keys << std::endl;
         // std::cout << "pos: " << pos << std::endl;
@@ -52,6 +56,9 @@ class InvertedIndex {
         if(pos > num_keys){
             return -1; // max should be pos == num_keys
         }
+
+        static char filler_buf[sizeof(ValueType)];
+        memset(filler_buf, 0xFF, sizeof(ValueType));
 
         if(new_key){
             if(pos != num_keys){
@@ -71,17 +78,17 @@ class InvertedIndex {
             index.write(key_str_buf, key_length, block_write_idx);
             block_write_idx += key_length;
 
-            for(uint32_t v : values){
+            for(const ValueType& v : values){
                 // std::cout << "v: " << v << std::endl;
                 // std::cout << "block_write_idx: " << block_write_idx << std::endl;
-                index.write(&v, sizeof(uint32_t), block_write_idx);
-                block_write_idx += sizeof(uint32_t);
+                index.write(&v, sizeof(ValueType), block_write_idx);
+                block_write_idx += sizeof(ValueType);
             }
 
-            uint32_t num_filler_bytes = (block_size - key_length - values.size() * sizeof(uint32_t)) / sizeof(uint32_t);
+            uint32_t num_filler_bytes = (block_size - key_length - values.size() * sizeof(ValueType)) / sizeof(ValueType);
             for(size_t i = 0; i < num_filler_bytes; i++){
-                index.write(&MAX_UINT32, 4, block_write_idx); // fill remaining block w/ max value
-                block_write_idx += sizeof(uint32_t);
+                index.write(&filler_buf, sizeof(ValueType), block_write_idx); // fill remaining block w/ max value
+                block_write_idx += sizeof(ValueType);
             }
 
             index.write_idx += block_size;
@@ -89,26 +96,26 @@ class InvertedIndex {
             // std::cout << "inserting into existing block" << std::endl;
             // get num of available spaces in block
             char* value_start_pos = index.get_start_addr() + pos * block_size + key_length;
-            uint32_t curr_value = char_to_uint32_t(value_start_pos);
+            ValueType curr_value = *((ValueType*) value_start_pos);
             char* curr_value_pos = value_start_pos;
-            while(curr_value != MAX_UINT32 && (curr_value_pos - value_start_pos) < (block_size - key_length)){
-                curr_value_pos += 4;
-                curr_value = char_to_uint32_t(curr_value_pos);
+            while(memcmp(&curr_value, filler_buf, sizeof(ValueType)) && (curr_value_pos - value_start_pos) < (block_size - key_length)){
+                curr_value_pos += sizeof(ValueType);
+                curr_value = *((ValueType*) curr_value_pos);
             }
 
             const uint32_t num_available_bytes = block_size - key_length - (curr_value_pos - value_start_pos);
-            uint32_t num_available_spaces = num_available_bytes / sizeof(uint32_t);
+            uint32_t num_available_spaces = num_available_bytes / sizeof(ValueType);
 
             // std::cout << "num_available_spaces: " << num_available_spaces << std::endl;
 
             uint32_t block_write_idx = pos * block_size + key_length + (curr_value_pos - value_start_pos);
             for(size_t i = 0 ; i < std::min(num_available_spaces, (uint32_t) values.size()); i++){
-                index.write(&values[i], sizeof(uint32_t), block_write_idx);
-                block_write_idx += sizeof(uint32_t);
+                index.write(&values[i], sizeof(ValueType), block_write_idx);
+                block_write_idx += sizeof(ValueType);
             }
 
             if(values.size() > num_available_spaces){
-                std::vector<uint32_t> remaining_values(values.begin() + num_available_spaces, values.end());
+                std::vector<ValueType> remaining_values(values.begin() + num_available_spaces, values.end());
                 insert_block_in_position(pos + 1, key, remaining_values, true);
             }
         }
@@ -143,7 +150,7 @@ class InvertedIndex {
         return std::make_pair(l, false);
     }
 
-    int insert(const std::string& key, const std::vector<uint32_t>& values){
+    int insert(const std::string& key, const std::vector<ValueType>& values){
         if(key.size() > key_length){
             return -1;
         }
@@ -153,29 +160,28 @@ class InvertedIndex {
         return 0;
     }   
 
-    std::vector<uint32_t> get_values_from_block(uint32_t block_idx){
+    std::vector<ValueType> get_values_from_block(uint32_t block_idx){
+        static char filler_buf[sizeof(ValueType)];
+        memset(filler_buf, 0xFF, sizeof(ValueType));
+
         // std::cout << "block_idx: " << block_idx << std::endl;
-        std::vector<uint32_t> values;
+        std::vector<ValueType> values;
         char* start_value_pos = index.get_start_addr() + block_idx * block_size + key_length;
         char* value_pos = start_value_pos;
-        uint32_t curr_value = char_to_uint32_t(value_pos);
-        while(curr_value != MAX_UINT32 && (value_pos - start_value_pos) < (block_size - key_length)){
-            char print_buf[4];
-            memcpy(print_buf, value_pos, 4);
-            //std::cout << "value_pos: " << print_buf << std::endl;
-            //std::cout << "curr_value: " << curr_value << std::endl;
+        ValueType curr_value = *((ValueType*) value_pos);
+        while(memcmp(&curr_value, filler_buf, sizeof(ValueType)) && (value_pos - start_value_pos) < (block_size - key_length)){
             values.push_back(curr_value);
-            value_pos += 4;
-            curr_value = char_to_uint32_t(value_pos);
+            value_pos += sizeof(ValueType);
+            curr_value = *((ValueType*) value_pos);
         }
         return values;
     }
 
-    std::vector<uint32_t> search(const std::string& key){
+    std::vector<ValueType> search(const std::string& key){
         char key_search_buf[key_length];
         get_padded_buf(key, key_search_buf);
 
-        std::vector<uint32_t> values;
+        std::vector<ValueType> values;
         auto [idx, found] = bsearch(key);
         if(!found)
             return values; 
@@ -186,7 +192,7 @@ class InvertedIndex {
         int back_idx = idx;
         while(back_idx >= 0 
             && memcmp(key_search_buf, index.get_start_addr() + back_idx * block_size, key_length) == 0){
-            std::vector<uint32_t> block_values = get_values_from_block(back_idx);
+            std::vector<ValueType> block_values = get_values_from_block(back_idx);
             values.insert(values.end(), block_values.begin(), block_values.end());
             back_idx--;
         }
@@ -194,7 +200,7 @@ class InvertedIndex {
         uint32_t forward_idx = idx + 1;
         while(forward_idx < get_num_keys()
             && memcmp(key_search_buf, index.get_start_addr() + forward_idx * block_size, key_length) == 0){
-            std::vector<uint32_t> block_values = get_values_from_block(forward_idx);
+            std::vector<ValueType> block_values = get_values_from_block(forward_idx);
             values.insert(values.end(), block_values.begin(), block_values.end());
             forward_idx++;
         }

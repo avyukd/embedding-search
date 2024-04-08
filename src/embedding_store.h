@@ -39,7 +39,7 @@ class EmbeddingStore {
     uint32_t max_embedding_store_size;
     uint32_t max_embedding_to_object_map_size;
 
-    InvertedIndex* inverted_index = nullptr; // stores keys to object store idxs 
+    InvertedIndex<uint32_t>* inverted_index = nullptr; // stores keys to object store idxs 
 
     FileWrapper embedding_store;
     FileWrapper embedding_to_object_map;
@@ -82,7 +82,7 @@ class EmbeddingStore {
 
         if(hybrid_search_enabled){
             // todo: scrutinize this default a bit more
-            inverted_index = new InvertedIndex(dir, (max_embedding_store_size / embedding_size) * DEFAULT_BLOCK_SIZE);
+            inverted_index = new InvertedIndex<uint32_t>(dir, (max_embedding_store_size / embedding_size) * DEFAULT_BLOCK_SIZE);
         }
     }
 
